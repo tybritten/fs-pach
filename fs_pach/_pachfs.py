@@ -51,7 +51,7 @@ def _make_repr(class_name, *args, **kwargs):
 
 
 class PachFile(io.IOBase):
-    """Proxy for a S3 file."""
+    """Proxy for a Pachyderm file. (pfs.File)"""
 
     @classmethod
     def factory(cls, filename, mode, on_close):
@@ -160,8 +160,8 @@ class PachFile(io.IOBase):
 
 
 @contextlib.contextmanager
-def s3errors(path):
-    """Translate S3 errors to FSErrors."""
+def pacherrors(path):
+    """Translate Pachyderm errors to FSErrors."""
     try:
         yield
     except RpcError as error:
@@ -178,8 +178,6 @@ def s3errors(path):
             raise errors.PermissionDenied(path=path, msg=error_msg)
         else:
             raise errors.OperationFailed(path=path, exc=error)
-    except SSLError as error:
-        raise errors.OperationFailed(path, exc=error)
     except Exception as error:
         raise errors.RemoteConnectionError(path, exc=error, msg="{}".format(error))
 
@@ -187,33 +185,19 @@ def s3errors(path):
 @six.python_2_unicode_compatible
 class PACHFS(FS):
     """
-    Construct an Amazon S3 filesystem for
+    Construct an Pachyderm filesystem for
     `PyFilesystem <https://pyfilesystem.org>`_
 
-    :param str repo_name: The S3 bucket name.
-    :param str dir_path: The root directory within the S3 Bucket.
+    :param str repo_name: The Pachyderm repo name.
+    :param str dir_path: The root directory within the Repo.
         Defaults to ``"/"``
-    :param str auth_token: The access key, or ``None`` to read
-        the key from standard configuration files.
-    :param str aws_secret_access_key: The secret key, or ``None`` to
-        read the key from standard configuration files.
-    :param str endpoint_url: Alternative endpoint url (``None`` to use
-        default).
-    :param str aws_session_token:
-    :param str region: Optional S3 region.
+    :param str auth_token: The auth token if auth is enabled.
+    :param str project_name: The name of the project. Uses default if none supplied.
+    :param str host: the dns name or ip of the pachyderm cluster. Uses localhost as default
+    :param str port: the port of the pachyderm cluster. Uses 80 as default.
     :param str delimiter: The delimiter to separate folders, defaults to
         a forward slash.
-    :param bool strict: When ``True`` (default) PACHFS will follow the
-        PyFilesystem specification exactly. Set to ``False`` to disable
-        validation of destination paths which may speed up uploads /
-        downloads.
-    :param str cache_control: Sets the 'Cache-Control' header for uploads.
-    :param str acl: Sets the Access Control List header for uploads.
-    :param dict upload_args: A dictionary for additional upload arguments.
-        See https://boto3.readthedocs.io/en/latest/reference/services/s3.html#S3.Object.put
-        for details.
-    :param dict download_args: Dictionary of extra arguments passed to
-        the S3 client.
+    :param str branch: The branch or commit to use, defaults to master.
 
     """
 
@@ -290,7 +274,7 @@ class PACHFS(FS):
         return "<PACHFS '{}'>".format(join(self._repo_name, relpath(self.dir_path)))
 
     def _path_to_key(self, path):
-        """Converts an fs path to a s3 key."""
+        """Converts an fs path to a pach repo key."""
         _path = relpath(normpath(path))
         _key = (
             "{}/{}".format(self._prefix, _path).lstrip("/").replace("/", self.delimiter)
@@ -298,7 +282,7 @@ class PACHFS(FS):
         return _key
 
     def _path_to_dir_key(self, path):
-        """Converts an fs path to a s3 key."""
+        """Converts an fs path to a pach repo key."""
         _path = relpath(normpath(path))
         _key = (
             forcedir("{}/{}".format(self._prefix, _path))
@@ -313,13 +297,13 @@ class PACHFS(FS):
     def _get_object(self, path, key):
         _key = key.rstrip(self.delimiter)
         try:
-            with s3errors(path):
+            with pacherrors(path):
                 file_obj = pfs.File.from_uri(
                     f"{self.project_name}/{self._repo_name}@{self.branch}:{_key}"
                 )
                 obj = self.client.pfs.list_file(file=file_obj)
         except errors.ResourceNotFound:
-            with s3errors(path):
+            with pacherrors(path):
                 file_obj = pfs.File.from_uri(
                     f"{self.project_name}/{self._repo_name}@{self.branch}:{_key+self.delimiter}"
                 )
@@ -369,7 +353,7 @@ class PACHFS(FS):
         _key = self._path_to_key(_path)
         dir_path = dirname(_path)
         if dir_path != "/":
-            with s3errors(path):
+            with pacherrors(path):
                 file_obj = pfs.File.from_uri(
                     f"{self.project_name}/{self._repo_name}@{self.branch}:{_path}"
                 )
@@ -429,7 +413,7 @@ class PACHFS(FS):
 
     def listdir(self, path):
         _path = self.validatepath(path)
-        with s3errors(path):
+        with pacherrors(path):
             dir_list = self.client.pfs.list_file(
                 file=pfs.File.from_uri(
                     f"{self.project_name}/{self._repo_name}@{self.branch}:{_path}"
@@ -462,7 +446,7 @@ class PACHFS(FS):
             pass
         else:
             raise errors.DirectoryExists(path)
-        with s3errors(path):
+        with pacherrors(path):
             with self.client.pfs.commit(
                 branch=pfs.Branch.from_uri(
                     f"{self.project_name}/{self._repo_name}@{self.branch}"
@@ -482,10 +466,10 @@ class PACHFS(FS):
         if _mode.create:
 
             def on_close_create(pach_file):
-                """Called when the S3 file closes, to upload data."""
+                """Called when the pach file closes, to upload data."""
                 try:
                     pach_file.raw.seek(0)
-                    with s3errors(path):
+                    with pacherrors(path):
                         with self.client.pfs.commit(
                             branch=pfs.Branch.from_uri(
                                 f"{self.project_name}/{self._repo_name}@{self.branch}"
@@ -519,11 +503,11 @@ class PACHFS(FS):
             return pach_file
 
         def on_close(pach_file):
-            """Called when the S3 file closes, to upload the data."""
+            """Called when the PACH file closes, to upload the data."""
             try:
                 if _mode.writing:
                     pach_file.raw.seek(0, os.SEEK_SET)
-                    with s3errors(path):
+                    with pacherrors(path):
                         with self.client.pfs.commit(
                             branch=pfs.Branch.from_uri(
                                 f"{self.project_name}/{self._repo_name}@{self.branch}"
@@ -536,7 +520,7 @@ class PACHFS(FS):
                 pach_file.raw.close()
 
         pach_file = PachFile.factory(path, _mode, on_close=on_close)
-        with s3errors(path):
+        with pacherrors(path):
             fileobj = pfs.File.from_uri(
                 f"{self.project_name}/{self._repo_name}@{self.branch}:{_key}"
             )
@@ -578,7 +562,7 @@ class PACHFS(FS):
         _path = self.validatepath(path)
         _key = self._path_to_key(_path)
         bytes_file = io.BytesIO()
-        with s3errors(path):
+        with pacherrors(path):
             fileobj = pfs.File.from_uri(
                 f"{self.project_name}/{self._repo_name}@{self.branch}:{_key}"
             )
@@ -591,14 +575,14 @@ class PACHFS(FS):
         self.check()
         _path = self.validatepath(path)
         _key = self._path_to_key(_path)
-        with s3errors(path):
+        with pacherrors(path):
             with open(file, "wb") as f:
                 fileobj = pfs.File.from_uri(
                     f"{self.project_name}/{self._repo_name}@{self.branch}:{_key}"
                 )
                 bytestream = self.client.pfs.get_file(file=fileobj)
                 for byte in bytestream:
-                    f.write(byte)
+                    f.write(byte.value)
 
     def exists(self, path):
         self.check()
@@ -618,7 +602,7 @@ class PACHFS(FS):
         info = self.getinfo(path)
         if not info.is_dir:
             raise errors.DirectoryExpected(path)
-        with s3errors(path):
+        with pacherrors(path):
             dir_list = self.client.pfs.list_file(
                 file=pfs.File.from_uri(
                     f"{self.project_name}/{self._repo_name}@{self.branch}:{path}"
@@ -642,7 +626,7 @@ class PACHFS(FS):
         _path = self.validatepath(path)
         _key = self._path_to_key(_path)
         bytes_file = io.BytesIO(contents)
-        with s3errors(path):
+        with pacherrors(path):
             with self.client.pfs.commit(
                 branch=pfs.Branch.from_uri(
                     f"{self.project_name}/{self._repo_name}@{self.branch}"
@@ -656,7 +640,7 @@ class PACHFS(FS):
         _path = self.validatepath(path)
         _key = self._path_to_key(_path)
 
-        with s3errors(path):
+        with pacherrors(path):
             with self.client.pfs.commit(
                 branch=pfs.Branch.from_uri(
                     f"{self.project_name}/{self._repo_name}@{self.branch}"
@@ -672,7 +656,7 @@ class PACHFS(FS):
         _src_key = self._path_to_key(_src_path)
         _dst_key = self._path_to_key(_dst_path)
         try:
-            with s3errors(src_path):
+            with pacherrors(src_path):
                 with self.client.pfs.commit(
                     branch=pfs.Branch.from_uri(
                         f"{self.project_name}/{self._repo_name}@{self.branch}"
