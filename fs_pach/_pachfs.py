@@ -8,7 +8,7 @@ import os
 import tempfile
 import threading
 from ssl import SSLError
-
+from os.path import exists, expanduser
 import six
 from fs import ResourceType, errors
 from fs.base import FS
@@ -250,6 +250,11 @@ class PACHFS(FS):
         branch="master",
         delimiter="/",
     ):
+        self.has_config = False
+        if exists(expanduser("~/.pachyderm/config.json")):
+            print("FOUND CONFIG")
+            self.has_config = True
+
         self._repo_name = repo_name
         self.dir_path = dir_path
         self._prefix = relpath(normpath(dir_path)).rstrip("/")
@@ -315,9 +320,12 @@ class PACHFS(FS):
     @property
     def client(self):
         if not hasattr(self._tlocal, "client"):
-            self._tlocal.client = Client(
-                host=self.host, port=self.port, auth_token=self.auth_token
-            )
+            if self.has_config:
+                self._tlocal.client = Client.from_config()
+            else:
+                self._tlocal.client = Client(
+                    host=self.host, port=self.port, auth_token=self.auth_token
+                )
         return self._tlocal.client
 
     def _info_from_object(self, pfs_obj: pfs.FileInfo, namespaces=None):

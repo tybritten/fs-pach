@@ -22,7 +22,7 @@ CLASSIFIERS = [
 with open("README.rst", "rt") as f:
     DESCRIPTION = f.read()
 
-REQUIREMENTS = ["pachyderm-sdk>=0.*", "fs~=2.4", "six~=1.10"]
+REQUIREMENTS = ["pachyderm-sdk>=2.0.0", "fs~=2.4", "six~=1.10"]
 
 setup(
     name="fs-pachfs",
@@ -39,5 +39,5 @@ setup(
     test_suite="nose.collector",
     url="https://github.com/tybritten/pachfs",
     version=__version__,
-    entry_points={"fs.opener": ["pach = fs_pachfs.opener:PACHFSOpener"]},
+    entry_points={"fs.opener": ["pach = fs_pach.opener:PACHFSOpener"]},
 )
