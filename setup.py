@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-
 from setuptools import find_packages, setup
 
 with open("fs_pach/_version.py") as f:
@@ -25,9 +24,9 @@ with open("README.rst", "rt") as f:
 REQUIREMENTS = ["pachyderm-sdk>=2.0.0", "fs~=2.4", "six~=1.10"]
 
 setup(
-    name="fs-pachfs",
+    name="fs-pach",
     author="Tyler Britten",
-    author_email="tyler@pachyderm.io",
+    author_email="tyler.britten@hpe.com",
     classifiers=CLASSIFIERS,
     description="Pachyderm filesystem for PyFilesystem2",
     install_requires=REQUIREMENTS,
