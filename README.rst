@@ -14,7 +14,7 @@ You can install PACHFS from pip as follows:
 
 ::
 
-   pip install fs-pach
+   pip install git+https://github.com/tybritten/fs-pach.git
 
 Opening a PACHFS
 ----------------
