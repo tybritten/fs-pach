@@ -252,9 +252,7 @@ class PACHFS(FS):
     ):
         self.has_config = False
         if exists(expanduser("~/.pachyderm/config.json")):
-            print("FOUND CONFIG")
             self.has_config = True
-
         self._repo_name = repo_name
         self.dir_path = dir_path
         self._prefix = relpath(normpath(dir_path)).rstrip("/")
