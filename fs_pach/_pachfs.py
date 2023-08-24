@@ -5,10 +5,12 @@ __all__ = ["PACHFS"]
 import contextlib
 import io
 import os
+import shutil
 import tempfile
 import threading
-from ssl import SSLError
 from os.path import exists, expanduser
+from ssl import SSLError
+
 import six
 from fs import ResourceType, errors
 from fs.base import FS
@@ -530,7 +532,7 @@ class PACHFS(FS):
             fileobj = pfs.File.from_uri(
                 f"{self.project_name}/{self._repo_name}@{self.branch}:{_key}"
             )
-            bytestream = self.client.pfs.get_file(file=fileobj)
+            bytestream = self.client.pfs.pfs_file(file=fileobj)
             for byte in bytestream:
                 pach_file.write(byte)
         pach_file.seek(0, os.SEEK_SET)
@@ -572,7 +574,7 @@ class PACHFS(FS):
             fileobj = pfs.File.from_uri(
                 f"{self.project_name}/{self._repo_name}@{self.branch}:{_key}"
             )
-            bytestream = self.client.pfs.get_file(file=fileobj)
+            bytestream = self.client.pfs.pfs_file(file=fileobj)
             for byte in bytestream:
                 bytes_file.write(byte.value)
         return bytes_file.getvalue()
@@ -581,14 +583,14 @@ class PACHFS(FS):
         self.check()
         _path = self.validatepath(path)
         _key = self._path_to_key(_path)
+        print(f"path: {_path}, file: {file}")
         with pacherrors(path):
-            with open(file, "wb") as f:
-                fileobj = pfs.File.from_uri(
+            src_file = self.client.pfs.pfs_file(
+                file=pfs.File.from_uri(
                     f"{self.project_name}/{self._repo_name}@{self.branch}:{_key}"
                 )
-                bytestream = self.client.pfs.get_file(file=fileobj)
-                for byte in bytestream:
-                    f.write(byte.value)
+            )
+            shutil.copyfileobj(src_file, file)
 
     def exists(self, path):
         self.check()
